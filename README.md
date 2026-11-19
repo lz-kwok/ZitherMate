@@ -1,7 +1,3 @@
-
-
-https://github.com/user-attachments/assets/c0cbdac9-2200-40a6-bbc2-951610b53430
-
 # 筝伴 · 古筝伴学大师 (Guzheng Sheet Master)
 
 ![Version](https://img.shields.io/badge/version-0.1.0-0F172A)
@@ -20,8 +16,7 @@ https://github.com/user-attachments/assets/c0cbdac9-2200-40a6-bbc2-951610b53430
 
 ## 演示视频
 
-<!-- 请在 GitHub 网页编辑 README.md 时，将 C:\Users\GXY\Downloads\沧海一声笑_网页上传版.mp4 直接拖入下方替换此提示行 -->
-> 🎬 《沧海一声笑》伴练演示视频待上传至 GitHub 页面内联播放。
+https://github.com/user-attachments/assets/c0cbdac9-2200-40a6-bbc2-951610b53430
 
 ---
 
