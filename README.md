@@ -16,9 +16,8 @@
 
 ## 演示视频
 
-<video src="./沧海一声笑.mp4" controls width="100%"></video>
-
-> 如果当前 Markdown 阅读器不支持内联播放，请点击查看：[🎬 《沧海一声笑》伴练演示视频 (沧海一声笑.mp4)](./沧海一声笑.mp4)
+<!-- 请在 GitHub 网页编辑 README.md 时，将 C:\Users\GXY\Downloads\沧海一声笑_网页上传版.mp4 直接拖入下方替换此提示行 -->
+> 🎬 《沧海一声笑》伴练演示视频待上传至 GitHub 页面内联播放。
 
 ---
 

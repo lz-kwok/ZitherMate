@@ -26,6 +26,7 @@ dist-ssr
 # Tauri / Android build artifacts & local scratch
 *.apk
 *.idsig
+*.mp4
 current_screen.png
 .superpowers/
 src-tauri/gen/android/.gradle/
