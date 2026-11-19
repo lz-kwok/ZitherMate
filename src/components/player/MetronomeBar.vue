@@ -167,8 +167,19 @@
         </div>
       </div>
 
-      <!-- 3. 右侧：回滚顶部快捷按钮 -->
+      <!-- 3. 右侧：返回伴奏（若已选中伴奏） + 回滚顶部快捷按钮 -->
       <div class="flex items-center gap-2">
+        <button
+          v-if="accompanimentStore.activeTrack"
+          type="button"
+          @click="accompanimentStore.enterAccompanimentMode()"
+          class="vh-btn vh-btn-sm vh-btn-sage text-xs font-semibold"
+          style="background-color: #059669; color: #FFFFFF; border-radius: 8px;"
+          title="切换回真人 MP3 伴奏控制栏"
+        >
+          🎧 返回伴奏
+        </button>
+
         <button
           type="button"
           class="w-10 h-10 rounded-[8px] bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#475569] border border-[#E2E8F0] flex items-center justify-center transition-colors cursor-pointer"
@@ -187,12 +198,14 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue';
 import { useSheetStore } from '../../stores/sheetStore';
+import { useAccompanimentStore } from '../../stores/accompanimentStore';
 import { BeatUnit } from '../../types/music';
 import { metronome } from '../../engine/MetronomeEngine';
 import { autoScroller } from '../../engine/AutoScroller';
 import { extractStartingPosture } from '../sheet/StartingPostureGuide.vue';
 
 const store = useSheetStore();
+const accompanimentStore = useAccompanimentStore();
 
 const startingPosture = computed(() =>
   extractStartingPosture(store.currentSheet, store.selectedPartId, store.loopRange)
@@ -250,6 +263,7 @@ function selectBeatUnit(unit: BeatUnit) {
 }
 
 function startPlayback(withPreBeat: boolean) {
+  accompanimentStore.pause();
   metronome.prepareTimeline(store.currentSheet, store.loopRange, store.selectedPartId, store.beatUnit);
 
   metronome.onPreBeatTick = (count) => {

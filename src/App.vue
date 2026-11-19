@@ -40,7 +40,22 @@
           <span>曲谱库 (名谱推荐)</span>
         </button>
 
-        <!-- 2. AI 识谱上传入口 (Secondary Outline #0F172A) -->
+        <!-- 2. 伴奏练习菜单入口 -->
+        <button
+          type="button"
+          @click="showAccompanimentModal = true"
+          class="vh-btn vh-btn-md text-xs md:text-sm font-semibold"
+          :style="
+            accompanimentStore.isAccompanimentMode
+              ? { backgroundColor: '#059669', color: '#ffffff', border: '1px solid #059669', borderRadius: '8px' }
+              : { backgroundColor: 'transparent', color: '#0f172a', border: '1px solid #0f172a', borderRadius: '8px' }
+          "
+        >
+          <span>🎧</span>
+          <span>伴奏</span>
+        </button>
+
+        <!-- 3. AI 识谱上传入口 (Secondary Outline #0F172A) -->
         <button
           type="button"
           @click="showScannerModal = true"
@@ -51,21 +66,29 @@
           <span>拍摄/导入曲谱</span>
         </button>
 
-        <!-- 3. 伴练状态指示胶囊 (full 9999px 圆角) -->
+        <!-- 4. 伴练状态指示胶囊 (full 9999px 圆角) -->
         <span
           class="hidden lg:inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border"
           :style="
-            store.isPlaying
+            store.isPlaying || accompanimentStore.isPlaying
               ? { backgroundColor: 'rgba(34, 197, 94, 0.12)', color: '#16a34a', borderColor: 'rgba(34, 197, 94, 0.3)' }
               : { backgroundColor: '#f8fafc', color: '#64748b', borderColor: '#e2e8f0' }
           "
         >
           <span
             class="w-2.5 h-2.5 rounded-full"
-            :class="store.isPlaying ? 'animate-ping' : ''"
-            :style="{ backgroundColor: store.isPlaying ? '#059669' : '#64748b' }"
+            :class="store.isPlaying || accompanimentStore.isPlaying ? 'animate-ping' : ''"
+            :style="{ backgroundColor: store.isPlaying || accompanimentStore.isPlaying ? '#059669' : '#64748b' }"
           />
-          <span>{{ store.isPlaying ? '节拍器伴练中' : '空闲待命' }}</span>
+          <span>
+            {{
+              accompanimentStore.isPlaying
+                ? '🎧 伴奏练习中'
+                : store.isPlaying
+                ? '节拍器伴练中'
+                : '空闲待命'
+            }}
+          </span>
         </span>
       </div>
     </header>
@@ -80,8 +103,12 @@
       </div>
     </section>
 
-    <!-- 底部悬浮伴练与节拍控制栏 -->
-    <MetronomeBar />
+    <!-- 底部悬浮控制栏：伴奏模式与节拍器模式互斥切换 -->
+    <AccompanimentBar
+      v-if="accompanimentStore.isAccompanimentMode"
+      @open-modal="showAccompanimentModal = true"
+    />
+    <MetronomeBar v-else />
 
     <!-- 音符人工编辑微调弹窗 -->
     <NoteEditorModal />
@@ -90,6 +117,12 @@
     <ScoreLibraryModal
       v-if="showLibraryModal"
       @close="showLibraryModal = false"
+    />
+
+    <!-- MP3 伴奏选择弹窗 -->
+    <AccompanimentModal
+      v-if="showAccompanimentModal"
+      @close="showAccompanimentModal = false"
     />
 
     <!-- 拍照与 PDF 识谱弹窗 -->
@@ -103,14 +136,19 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useSheetStore } from './stores/sheetStore';
+import { useAccompanimentStore } from './stores/accompanimentStore';
 import ScoreRenderer from './components/sheet/ScoreRenderer.vue';
 import GuzhengStringPanel from './components/sheet/GuzhengStringPanel.vue';
 import MetronomeBar from './components/player/MetronomeBar.vue';
+import AccompanimentBar from './components/accompaniment/AccompanimentBar.vue';
+import AccompanimentModal from './components/accompaniment/AccompanimentModal.vue';
 import NoteEditorModal from './components/sheet/NoteEditorModal.vue';
 import CameraCapture from './components/scanner/CameraCapture.vue';
 import ScoreLibraryModal from './components/library/ScoreLibraryModal.vue';
 
 const store = useSheetStore();
+const accompanimentStore = useAccompanimentStore();
 const showScannerModal = ref(false);
 const showLibraryModal = ref(false);
+const showAccompanimentModal = ref(false);
 </script>

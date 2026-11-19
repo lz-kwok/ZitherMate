@@ -55,6 +55,8 @@ export const useSheetStore = defineStore('sheet', () => {
 
   // 播放与节拍器状态
   const isPlaying = ref(false);
+  const isAccompanimentSyncing = ref(false); // 伴奏实时同步高显进行中
+  const isPerformanceActive = computed(() => isPlaying.value || isAccompanimentSyncing.value);
   const bpm = ref(currentSheet.value.defaultBpm || 78);
   const isPreBeat = ref(false);          // 是否正在打预备铃
   const preBeatCount = ref(0);           // 预备拍计数 1, 2 (或 1, 2, 3, 4)
@@ -115,12 +117,31 @@ export const useSheetStore = defineStore('sheet', () => {
   // 切换播放/停止
   function setPlaying(status: boolean) {
     isPlaying.value = status;
-    if (!status) {
+    if (!status && !isAccompanimentSyncing.value) {
       isPreBeat.value = false;
       preBeatCount.value = 0;
       currentNoteId.value = null;
       activePartNotes.value = {};
     }
+  }
+
+  // 伴奏联动高显状态与单帧原子刷新
+  function setAccompanimentSyncing(active: boolean) {
+    isAccompanimentSyncing.value = active;
+    if (!active && !isPlaying.value) {
+      currentNoteId.value = null;
+      activePartNotes.value = {};
+    }
+  }
+
+  function setSyncedFrame(
+    primaryNoteId: string | null,
+    measureIdx: number,
+    partNotes: Record<string, Note | null>
+  ) {
+    currentNoteId.value = primaryNoteId;
+    currentMeasureIndex.value = measureIdx;
+    activePartNotes.value = partNotes;
   }
 
   // 调整速度（纯拍挑战下若低于原速则严格退出挑战态）
@@ -266,6 +287,7 @@ export const useSheetStore = defineStore('sheet', () => {
   // 载入新曲谱
   function loadSheet(newSheet: SheetMusic) {
     setPlaying(false);
+    isAccompanimentSyncing.value = false;
     currentSheet.value = newSheet;
     bpm.value = newSheet.defaultBpm || 78;
     beatUnit.value = newSheet.beatUnit || 'quarter';
@@ -315,6 +337,8 @@ export const useSheetStore = defineStore('sheet', () => {
     guzhengVolume,
     metronomeVolume,
     isPlaying,
+    isAccompanimentSyncing,
+    isPerformanceActive,
     bpm,
     isPreBeat,
     preBeatCount,
@@ -342,6 +366,8 @@ export const useSheetStore = defineStore('sheet', () => {
     setMetronomeVolume,
     setActiveNote,
     setPlaying,
+    setAccompanimentSyncing,
+    setSyncedFrame,
     setBpm,
     toggleLoop,
     openNoteEditor,

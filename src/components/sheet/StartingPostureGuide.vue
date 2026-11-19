@@ -1,7 +1,7 @@
 <template>
   <!-- 形态 A：待命态儿童「古筝起手式」引导卡 (Verdana Health: #FFFFFF + 1px #E2E8F0 + #0F172A Header Strip) -->
   <div
-    v-if="posture && !store.isPlaying"
+    v-if="posture && !store.isPerformanceActive"
     class="mb-6 vh-card vh-shadow-sm overflow-hidden transition-all"
     style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;"
   >

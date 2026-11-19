@@ -81,7 +81,7 @@
       <div
         v-if="hasMultipleParts && store.selectedPartId === 'all'"
         class="space-y-10 pb-8"
-        :class="{ 'standby-first-note': !store.isPlaying || store.isPreBeat }"
+        :class="{ 'standby-first-note': !store.isPerformanceActive || store.isPreBeat }"
       >
         <div
           v-for="(rowMeasures, rIdx) in measureRows"
@@ -106,7 +106,7 @@
                 @click="handleNoteClick(inNote, getGlobalMeasureIndex(rIdx, inIdx))"
                 class="inline-flex flex-col items-center px-1.5 py-0.5 rounded-[4px] cursor-pointer transition-all"
                 :style="
-                  store.isPlaying && !store.isPreBeat && store.currentNoteId === inNote.id
+                  store.isPerformanceActive && !store.isPreBeat && store.currentNoteId === inNote.id
                     ? { backgroundColor: 'rgba(5, 150, 105, 0.14)', color: '#059669', boxShadow: '0 0 0 2px #059669' }
                     : undefined
                 "
@@ -139,7 +139,7 @@
                   :key="`p1-m-${measure.measureNumber}`"
                   :measure="measure"
                   :measure-index="getGlobalMeasureIndex(rIdx, mIdx)"
-                  :is-current-measure="store.currentMeasureIndex === getGlobalMeasureIndex(rIdx, mIdx) && store.isPlaying && !store.isPreBeat"
+                  :is-current-measure="store.currentMeasureIndex === getGlobalMeasureIndex(rIdx, mIdx) && store.isPerformanceActive && !store.isPreBeat"
                   :is-in-loop-range="isInLoop(measure.measureNumber)"
                   :active-note-id="highlightedNoteId"
                   style="flex: 1 1 0%;"
@@ -154,7 +154,7 @@
                   :key="`p2-m-${measure.measureNumber}`"
                   :measure="measure"
                   :measure-index="getGlobalMeasureIndex(rIdx, mIdx)"
-                  :is-current-measure="store.currentMeasureIndex === getGlobalMeasureIndex(rIdx, mIdx) && store.isPlaying && !store.isPreBeat"
+                  :is-current-measure="store.currentMeasureIndex === getGlobalMeasureIndex(rIdx, mIdx) && store.isPerformanceActive && !store.isPreBeat"
                   :is-in-loop-range="isInLoop(measure.measureNumber)"
                   :active-note-id="highlightedNoteId"
                   style="flex: 1 1 0%;"
@@ -171,7 +171,7 @@
       <div
         v-else
         class="space-y-8 pb-8"
-        :class="{ 'standby-first-note': !store.isPlaying || store.isPreBeat }"
+        :class="{ 'standby-first-note': !store.isPerformanceActive || store.isPreBeat }"
       >
         <div
           v-for="(rowMeasures, rIdx) in activeMeasureRows"
@@ -183,7 +183,7 @@
             :key="measure.measureNumber"
             :measure="measure"
             :measure-index="getGlobalMeasureIndex(rIdx, mIdx)"
-            :is-current-measure="store.currentMeasureIndex === getGlobalMeasureIndex(rIdx, mIdx) && store.isPlaying && !store.isPreBeat"
+            :is-current-measure="store.currentMeasureIndex === getGlobalMeasureIndex(rIdx, mIdx) && store.isPerformanceActive && !store.isPreBeat"
             :is-in-loop-range="isInLoop(measure.measureNumber)"
             :active-note-id="highlightedNoteId"
             :style="{ flex: `${Math.max(3, measure.notes.length)} 1 0%` }"
@@ -212,7 +212,7 @@ const startingPosture = computed(() =>
 );
 
 const highlightedNoteId = computed(() => {
-  if (store.isPlaying && !store.isPreBeat) {
+  if (store.isPerformanceActive && !store.isPreBeat) {
     return store.currentNoteId;
   }
   return startingPosture.value?.note.id ?? null;

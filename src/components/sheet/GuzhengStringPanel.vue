@@ -397,7 +397,7 @@ function getNoteStrings(note: Note): { stringNum: number; finger: string }[] {
 }
 
 const isVocalIntroHolding = computed(() => {
-  if (!store.isPlaying || store.isPreBeat) return false;
+  if (!store.isPerformanceActive || store.isPreBeat) return false;
   const active = store.activePartNotes;
   const hasGuzhengActive = Boolean(active.part1 || active.part2 || active.main);
   return Boolean(active.intro) && !hasGuzhengActive;
@@ -412,7 +412,7 @@ const highlightedStringsMap = computed(() => {
   }
 
   // 2. 待命 / 预备拍 / 人声引子期：高亮起手首音弦
-  if (!store.isPlaying || store.isPreBeat || isVocalIntroHolding.value) {
+  if (!store.isPerformanceActive || store.isPreBeat || isVocalIntroHolding.value) {
     const posture = startingPosture.value;
     if (posture) {
       if (posture.secondaryString) {
