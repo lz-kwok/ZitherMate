@@ -1,0 +1,376 @@
+@import "tailwindcss";
+
+/* ============================================================================
+ * Verdana Health Design System Tokens (design.md)
+ * 兼顾 Android WebView (Chrome 99+) 全 HEX / rgba 兼容兜底
+ * ========================================================================== */
+@theme {
+  --font-display: "Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-sans: "DM Sans", "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --color-amber-50: #fffbeb;
+  --color-amber-100: #fef3c7;
+  --color-amber-200: #fde68a;
+  --color-amber-300: #fcd34d;
+  --color-amber-400: #fbbf24;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #d97706;
+  --color-amber-700: #b45309;
+  --color-amber-800: #92400e;
+  --color-amber-900: #78350f;
+  --color-amber-950: #451a03;
+
+  --color-rose-50: #fef2f2;
+  --color-rose-100: #fee2e2;
+  --color-rose-200: #fecaca;
+  --color-rose-300: #fca5a5;
+  --color-rose-400: #f87171;
+  --color-rose-500: #ef4444;
+  --color-rose-600: #dc2626;
+  --color-rose-700: #b91c1c;
+  --color-rose-800: #991b1b;
+  --color-rose-900: #7f1d1d;
+
+  --color-slate-50: #f8fafc;
+  --color-slate-100: #f1f5f9;
+  --color-slate-200: #e2e8f0;
+  --color-slate-300: #cbd5e1;
+  --color-slate-400: #94a3b8;
+  --color-slate-500: #64748b;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1e293b;
+  --color-slate-900: #0f172a;
+  --color-slate-950: #020617;
+
+  --color-emerald-50: #ecfdf5;
+  --color-emerald-100: #d1fae5;
+  --color-emerald-200: #a7f3d0;
+  --color-emerald-300: #6ee7b7;
+  --color-emerald-500: #22c55e;
+  --color-emerald-600: #059669;
+  --color-emerald-700: #047857;
+  --color-emerald-800: #16a34a;
+
+  --color-blue-50: #f0f9ff;
+  --color-blue-100: #e0f2fe;
+  --color-blue-200: #bae6fd;
+  --color-blue-300: #7dd3fc;
+  --color-blue-500: #0ea5e9;
+  --color-blue-600: #0284c7;
+  --color-blue-700: #0369a1;
+  --color-blue-800: #075985;
+
+  --color-purple-50: #f8fafc;
+  --color-purple-100: #f1f5f9;
+  --color-purple-200: #e2e8f0;
+  --color-purple-600: #0f172a;
+  --color-purple-900: #0f172a;
+
+  --color-stone-900: #0f172a;
+}
+
+:root {
+  --vh-navy: #0f172a;
+  --vh-navy-hover: #020617;
+  --vh-slate: #64748b;
+  --vh-slate-dark: #475569;
+  --vh-sage: #059669;
+  --vh-sage-hover: #047857;
+  --vh-bg: #f8fafc;
+  --vh-surface: #ffffff;
+  --vh-border: #e2e8f0;
+  --vh-divider: #f1f5f9;
+  --vh-success: #22c55e;
+  --vh-success-text: #16a34a;
+  --vh-warning: #eab308;
+  --vh-warning-text: #ca8a04;
+  --vh-error: #ef4444;
+  --vh-error-hover: #dc2626;
+  --vh-info: #0ea5e9;
+}
+
+@layer base {
+  body {
+    background-color: var(--vh-bg);
+    color: var(--vh-navy);
+    font-family: "DM Sans", "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;
+    line-height: 1.6;
+    user-select: none;
+    -webkit-user-select: none;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: "Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei", -apple-system, sans-serif;
+  }
+}
+
+/* 等宽对齐字体：用于简谱数字、BPM、小节号与 API 参数 */
+.musical-font {
+  font-family: "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.vh-headline {
+  font-family: "Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei", -apple-system, sans-serif;
+}
+
+.vh-mono {
+  font-family: "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Diffused Elevation Shadows (#0F172A 3% ~ 10%) */
+.vh-shadow-sm {
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+}
+
+.vh-shadow {
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05);
+}
+
+.vh-shadow-md {
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.07);
+}
+
+.vh-shadow-lg {
+  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.10);
+}
+
+/* Standard Cards (8px radius, #FFFFFF fill, 1px #E2E8F0 border) */
+.vh-card {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.vh-card-elevated {
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.07);
+}
+
+.vh-modal {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.10);
+}
+
+/* Standard Buttons (8px radius, sm 32px / md 42px / lg 48px, disabled 0.4) */
+.vh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px;
+  font-weight: 500;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 120ms ease;
+  cursor: pointer;
+}
+
+.vh-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.vh-btn-sm {
+  height: 32px;
+  padding: 6px 14px;
+  font-size: 14px;
+}
+
+.vh-btn-md {
+  height: 42px;
+  padding: 10px 22px;
+  font-size: 14px;
+}
+
+.vh-btn-lg {
+  height: 48px;
+  padding: 12px 28px;
+  font-size: 16px;
+}
+
+.vh-btn-primary {
+  background-color: #0f172a;
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+}
+
+.vh-btn-primary:hover:not(:disabled) {
+  background-color: #020617;
+}
+
+.vh-btn-sage {
+  background-color: #059669;
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+}
+
+.vh-btn-sage:hover:not(:disabled) {
+  background-color: #047857;
+}
+
+.vh-btn-secondary {
+  background-color: transparent;
+  color: #0f172a;
+  border: 1px solid #0f172a;
+}
+
+.vh-btn-secondary:hover:not(:disabled) {
+  background-color: rgba(15, 23, 42, 0.04);
+}
+
+.vh-btn-ghost {
+  background-color: transparent;
+  color: #475569;
+  border: none;
+}
+
+.vh-btn-ghost:hover:not(:disabled) {
+  background-color: #f1f5f9;
+}
+
+.vh-btn-destructive {
+  background-color: #ef4444;
+  color: #ffffff;
+  border: none;
+}
+
+.vh-btn-destructive:hover:not(:disabled) {
+  background-color: #dc2626;
+}
+
+/* Standard Inputs (42px height, 10px 14px padding, 8px radius, #E2E8F0 -> #0F172A focus) */
+.vh-input {
+  height: 42px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background-color: #ffffff;
+  color: #0f172a;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.vh-input:hover:not(:disabled) {
+  border-color: #0f172a;
+}
+
+.vh-input:focus:not(:disabled) {
+  border: 2px solid #0f172a;
+  padding: 9px 13px;
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.095);
+}
+
+.vh-input:disabled {
+  background-color: #f1f5f9;
+  border-color: #e2e8f0;
+  cursor: not-allowed;
+}
+
+/* Standard Chips (4px 12px padding, 4px radius, 12px/500, uppercase, tracking 0.5px) */
+.vh-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  line-height: 1.4;
+}
+
+.vh-chip-filter {
+  background-color: #f8fafc;
+  color: #0f172a;
+  border: 1px solid #e2e8f0;
+}
+
+.vh-chip-filter-active {
+  background-color: #0f172a;
+  color: #ffffff;
+  border: 1px solid #0f172a;
+}
+
+.vh-chip-success {
+  background-color: rgba(34, 197, 94, 0.085);
+  color: #16a34a;
+  border: none;
+}
+
+.vh-chip-warning {
+  background-color: rgba(234, 179, 8, 0.085);
+  color: #ca8a04;
+  border: none;
+}
+
+.vh-chip-error {
+  background-color: rgba(239, 68, 68, 0.085);
+  color: #dc2626;
+  border: none;
+}
+
+.vh-chip-info {
+  background-color: rgba(14, 165, 233, 0.085);
+  color: #0284c7;
+  border: none;
+}
+
+/* Custom Checkbox (18px x 18px, 4px radius, #CBD5E1 -> #0F172A checked) */
+.vh-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1.5px solid #cbd5e1;
+  background-color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.vh-checkbox:checked {
+  background-color: #0f172a;
+  border-color: #0f172a;
+}
+
+.vh-checkbox:checked::after {
+  content: "";
+  width: 5px;
+  height: 9px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+
+.vh-checkbox:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 呼吸光晕与视线引导动画 (Sage #059669) */
+@keyframes beat-pulse {
+  0% { transform: scale(1); filter: drop-shadow(0 0 2px rgba(5, 150, 105, 0.35)); }
+  50% { transform: scale(1.16); filter: drop-shadow(0 0 8px rgba(5, 150, 105, 0.65)); }
+  100% { transform: scale(1); filter: drop-shadow(0 0 2px rgba(5, 150, 105, 0.35)); }
+}
+
+.note-active {
+  animation: beat-pulse 0.25s ease-out;
+}
