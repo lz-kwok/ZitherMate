@@ -1,3 +1,7 @@
+
+
+https://github.com/user-attachments/assets/c0cbdac9-2200-40a6-bbc2-951610b53430
+
 # 筝伴 · 古筝伴学大师 (Guzheng Sheet Master)
 
 ![Version](https://img.shields.io/badge/version-0.1.0-0F172A)
