@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { SheetMusic, Note, BeatUnit, SoundMode } from '../types/music';
+import { SheetMusic, Note, BeatUnit, SoundMode, ScoreDisplayMode, Measure, ScorePart } from '../types/music';
 import { standardGuzhengScore } from '../data/defaultScore';
 import { builtInScores } from '../data/scores';
+import { deleteScoreImages } from '../utils/scoreImageStorage';
 
 export type MasteryStage = 'slow' | 'normal' | 'challenge' | null;
 export type DuetStringMode = 'part1' | 'both';
@@ -48,8 +49,8 @@ export const useSheetStore = defineStore('sheet', () => {
   // 节拍器基准音符单位：'quarter' (♩=78) 或 'eighth' (♪=156)
   const beatUnit = ref<BeatUnit>(currentSheet.value.beatUnit || 'quarter');
 
-  // 发音模式：'both' 节拍+古筝原声 (默认推荐伴练), 'guzheng' 仅古筝原声 (示范聆听), 'metronome' 仅节拍器, 'silent' 静音
-  const soundMode = ref<SoundMode>('both');
+  // 发音模式：原件画框谱默认 'metronome'（清脆节拍引导），数字化简谱默认 'both'（节拍+古筝原声）
+  const soundMode = ref<SoundMode>(currentSheet.value.scoreMode === 'original' ? 'metronome' : 'both');
   const guzhengVolume = ref(0.85);
   const metronomeVolume = ref(0.75);
 
@@ -61,6 +62,7 @@ export const useSheetStore = defineStore('sheet', () => {
   const isPreBeat = ref(false);          // 是否正在打预备铃
   const preBeatCount = ref(0);           // 预备拍计数 1, 2 (或 1, 2, 3, 4)
   const currentMeasureIndex = ref(0);    // 当前演奏的小节索引 (0-based)
+  const currentMeasureProgress = ref(0); // 当前小节内播放进度 0~1（用于原件画框扫拍）
   const currentNoteId = ref<string | null>(null);
 
   // 三阶通关伴练与右侧 21 弦亮弦控制
@@ -121,6 +123,7 @@ export const useSheetStore = defineStore('sheet', () => {
       isPreBeat.value = false;
       preBeatCount.value = 0;
       currentNoteId.value = null;
+      currentMeasureProgress.value = 0;
       activePartNotes.value = {};
     }
   }
@@ -130,8 +133,17 @@ export const useSheetStore = defineStore('sheet', () => {
     isAccompanimentSyncing.value = active;
     if (!active && !isPlaying.value) {
       currentNoteId.value = null;
+      currentMeasureProgress.value = 0;
       activePartNotes.value = {};
     }
+  }
+
+  function setMeasureProgress(progress: number) {
+    if (!Number.isFinite(progress)) {
+      currentMeasureProgress.value = 0;
+      return;
+    }
+    currentMeasureProgress.value = Math.max(0, Math.min(1, progress));
   }
 
   function setSyncedFrame(
@@ -291,9 +303,10 @@ export const useSheetStore = defineStore('sheet', () => {
     currentSheet.value = newSheet;
     bpm.value = newSheet.defaultBpm || 78;
     beatUnit.value = newSheet.beatUnit || 'quarter';
-    soundMode.value = 'both';
+    soundMode.value = newSheet.scoreMode === 'original' ? 'metronome' : 'both';
     masteryStage.value = 'normal';
     currentMeasureIndex.value = 0;
+    currentMeasureProgress.value = 0;
     currentNoteId.value = null;
     activePartNotes.value = {};
     loopRange.value = null;
@@ -315,6 +328,11 @@ export const useSheetStore = defineStore('sheet', () => {
 
   // 从自建曲库删除曲谱
   function deleteCustomScore(id: string) {
+    const target = customScores.value.find((s) => s.id === id);
+    if (target?.scoreMode === 'original' || target?.originalScore?.pages?.length) {
+      const pageIds = target.originalScore?.pages?.map((p) => p.id);
+      void deleteScoreImages(id, pageIds);
+    }
     customScores.value = customScores.value.filter((s) => s.id !== id);
     persistCustomScores();
     if (currentSheet.value.id === id) {
@@ -324,6 +342,70 @@ export const useSheetStore = defineStore('sheet', () => {
 
   function setSelectedPartId(partId: string) {
     selectedPartId.value = partId;
+  }
+
+  // 在原件画框谱与数字化简谱视图之间无损切换
+  function setScoreDisplayMode(mode: ScoreDisplayMode) {
+    if (mode === 'original' && !currentSheet.value.originalScore?.anchors?.length) {
+      return;
+    }
+    setPlaying(false);
+    isAccompanimentSyncing.value = false;
+    currentSheet.value = {
+      ...currentSheet.value,
+      scoreMode: mode,
+    };
+    soundMode.value = mode === 'original' ? 'metronome' : 'both';
+    loopRange.value = null;
+    currentMeasureIndex.value = 0;
+    currentMeasureProgress.value = 0;
+    currentNoteId.value = null;
+    activePartNotes.value = {};
+  }
+
+  // 为原件曲谱写入并持久化转义后的数字化简谱数据（保留 originalScore 不变并切至数字简谱模式）
+  function attachDigitalTranscription(
+    sheetId: string,
+    payload: {
+      measures: Measure[];
+      parts?: ScorePart[];
+      key?: string;
+      timeSignature?: [number, number];
+      defaultBpm?: number;
+    }
+  ) {
+    const mergeSheet = (target: SheetMusic): SheetMusic => ({
+      ...target,
+      key: payload.key || target.key,
+      timeSignature: payload.timeSignature || target.timeSignature,
+      defaultBpm: payload.defaultBpm || target.defaultBpm,
+      measures: JSON.parse(JSON.stringify(payload.measures)),
+      parts: payload.parts ? JSON.parse(JSON.stringify(payload.parts)) : undefined,
+      scoreMode: 'digital',
+    });
+
+    const customIdx = customScores.value.findIndex((s) => s.id === sheetId);
+    let updatedSheet: SheetMusic | null = null;
+    if (customIdx !== -1) {
+      updatedSheet = mergeSheet(customScores.value[customIdx]);
+      customScores.value[customIdx] = updatedSheet;
+      persistCustomScores();
+    }
+
+    if (currentSheet.value.id === sheetId) {
+      const nextCurrent = updatedSheet ? updatedSheet : mergeSheet(currentSheet.value);
+      setPlaying(false);
+      isAccompanimentSyncing.value = false;
+      currentSheet.value = nextCurrent;
+      bpm.value = nextCurrent.defaultBpm || bpm.value;
+      soundMode.value = 'both';
+      loopRange.value = null;
+      currentMeasureIndex.value = 0;
+      currentMeasureProgress.value = 0;
+      currentNoteId.value = null;
+      activePartNotes.value = {};
+      selectedPartId.value = 'all';
+    }
   }
 
   return {
@@ -343,6 +425,7 @@ export const useSheetStore = defineStore('sheet', () => {
     isPreBeat,
     preBeatCount,
     currentMeasureIndex,
+    currentMeasureProgress,
     currentNoteId,
     masteryStage,
     duetStringMode,
@@ -356,6 +439,8 @@ export const useSheetStore = defineStore('sheet', () => {
     saveScoreToLibrary,
     deleteCustomScore,
     setSelectedPartId,
+    setScoreDisplayMode,
+    attachDigitalTranscription,
     setBeatUnit,
     setSoundMode,
     applyMasteryStage,
@@ -367,6 +452,7 @@ export const useSheetStore = defineStore('sheet', () => {
     setActiveNote,
     setPlaying,
     setAccompanimentSyncing,
+    setMeasureProgress,
     setSyncedFrame,
     setBpm,
     toggleLoop,

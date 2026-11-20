@@ -67,9 +67,30 @@
           </button>
         </div>
 
-        <!-- 右侧：作曲与改编者信息 -->
-        <div class="text-right text-xs md:text-sm font-medium text-[#64748B] leading-relaxed">
-          <div v-if="store.currentSheet.author">{{ store.currentSheet.author }}</div>
+        <!-- 右侧：切换原件全谱 / 重新转义 & 作曲/改编者信息 -->
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            v-if="store.currentSheet.originalScore?.anchors?.length"
+            type="button"
+            @click="store.setScoreDisplayMode('original')"
+            class="vh-chip cursor-pointer transition-colors font-semibold"
+            style="background-color: rgba(5, 150, 105, 0.1); color: #059669; border: 1px solid rgba(5, 150, 105, 0.35);"
+            title="切换回原版原件画框谱（高清原图直显）"
+          >
+            📄 切回原件全谱 ({{ store.currentSheet.originalScore.anchors.length }}小节)
+          </button>
+          <button
+            v-if="isCustomOriginalScore"
+            type="button"
+            @click="$emit('transcribe-to-digital')"
+            class="vh-chip vh-chip-filter hover:border-[#0F172A] cursor-pointer transition-colors font-medium"
+            title="调用视觉大模型重新从原件转义数字简谱"
+          >
+            🔄 重新转义原件
+          </button>
+          <div class="text-right text-xs md:text-sm font-medium text-[#64748B] leading-relaxed">
+            <div v-if="store.currentSheet.author">{{ store.currentSheet.author }}</div>
+          </div>
         </div>
       </div>
 
@@ -201,11 +222,22 @@
 import { computed } from 'vue';
 import { useSheetStore } from '../../stores/sheetStore';
 import { Measure, Note } from '../../types/music';
+import { builtInScores } from '../../data/scores';
 import MeasureView from './MeasureView.vue';
 import StartingPostureGuide, { extractStartingPosture } from './StartingPostureGuide.vue';
 import { guzhengSynth } from '../../engine/GuzhengAudioSynth';
 
+defineEmits<{
+  (e: 'transcribe-to-digital'): void;
+}>();
+
 const store = useSheetStore();
+
+const isCustomOriginalScore = computed(
+  () =>
+    Boolean(store.currentSheet.originalScore?.pages?.length) &&
+    !builtInScores.some((s) => s.id === store.currentSheet.id)
+);
 
 const startingPosture = computed(() =>
   extractStartingPosture(store.currentSheet, store.selectedPartId, store.loopRange)

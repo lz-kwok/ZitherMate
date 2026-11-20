@@ -52,6 +52,34 @@ export interface ScorePart {
   measures: Measure[];
 }
 
+export type ScoreDisplayMode = 'digital' | 'original';
+
+export interface OriginalScorePage {
+  id: string;
+  pageIndex: number;
+  width: number;
+  height: number;
+  staticUrl?: string; // 内置原件曲谱直接指向打包静态资源路径，无需写入 IndexedDB
+}
+
+export interface MeasureAnchorBox {
+  id: string;
+  measureNumber: number;
+  pageIndex: number;
+  rowIndex: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  beats?: number;
+}
+
+export interface OriginalScoreData {
+  pages: OriginalScorePage[];
+  anchors: MeasureAnchorBox[];
+  detectedBy?: 'local' | 'ai' | 'hybrid' | 'manual';
+}
+
 export interface SheetMusic {
   id: string;
   title: string;
@@ -67,4 +95,6 @@ export interface SheetMusic {
   measures: Measure[];     // 主声部小节（默认播放/伴练声部）
   parts?: ScorePart[];     // 多声部重奏扩展（如古筝I、古筝II）
   introMelody?: Measure[]; // 前奏领唱/引子旋律
+  scoreMode?: ScoreDisplayMode; // 'digital' 数字化简谱（默认） | 'original' 原件画框谱
+  originalScore?: OriginalScoreData; // 原件曲谱页与小节埋点框数据
 }

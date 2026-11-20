@@ -49,7 +49,7 @@
               }}
             </span>
             <span
-              v-if="startingPosture && (!store.isPlaying || store.isPreBeat)"
+              v-if="!isOriginalScore && startingPosture && (!store.isPlaying || store.isPreBeat)"
               class="vh-chip vh-chip-success vh-mono truncate max-w-[14rem] sm:max-w-xs"
               :title="`起手找弦：${startingPosture.primaryString.relativeDesc}，${startingPosture.fingerTitle}`"
             >
@@ -73,9 +73,13 @@
           </div>
           <span class="text-xs text-[#64748B] mt-0.5">
             {{
-              store.isPlaying
-                ? (store.isPreBeat ? '小手像握小鸡蛋搭好首音弦，马上开弹' : '视线跟随音符跳动光点')
-                : '小手握“小鸡蛋”搭好起手弦，点击开始跟拍'
+              isOriginalScore
+                ? (store.isPlaying
+                    ? (store.isPreBeat ? '准备好看准绿色起奏框，马上开始扫拍' : '视线跟随原谱高显光框，点击任意小节可设 A-B 循环')
+                    : '视线跟随原谱高显光框，点击任意小节可设 A-B 循环')
+                : (store.isPlaying
+                    ? (store.isPreBeat ? '小手像握小鸡蛋搭好首音弦，马上开弹' : '视线跟随音符跳动光点')
+                    : '小手握“小鸡蛋”搭好起手弦，点击开始跟拍')
             }}
           </span>
         </div>
@@ -145,11 +149,7 @@
           style="background-color: #f8fafc;"
         >
           <button
-            v-for="mode in [
-              { key: 'both', label: '节拍+原声', icon: '🎼', title: '边打节拍边播放古筝示范原声' },
-              { key: 'guzheng', label: '聆听原声', icon: '🪕', title: '关闭打拍声，仅聆听纯净古筝原声示范' },
-              { key: 'metronome', label: '仅节拍器', icon: '⏱️', title: '清脆滴滴节拍器，无原声干扰' }
-            ]"
+            v-for="mode in soundModeOptions"
             :key="mode.key"
             type="button"
             class="px-2.5 py-1.5 rounded-[4px] font-medium transition-all text-xs flex items-center gap-1.5 cursor-pointer"
@@ -196,7 +196,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, onUnmounted, watch } from 'vue';
 import { useSheetStore } from '../../stores/sheetStore';
 import { useAccompanimentStore } from '../../stores/accompanimentStore';
 import { BeatUnit } from '../../types/music';
@@ -207,9 +207,67 @@ import { extractStartingPosture } from '../sheet/StartingPostureGuide.vue';
 const store = useSheetStore();
 const accompanimentStore = useAccompanimentStore();
 
+const isOriginalScore = computed(() => store.currentSheet.scoreMode === 'original');
+
+const soundModeOptions = computed(() => {
+  if (isOriginalScore.value) {
+    return [
+      { key: 'metronome', label: '节拍器跟随', icon: '⏱️', title: '清脆打拍引导，框内光柱实时扫拍' },
+      { key: 'silent', label: '静音跟框', icon: '🔇', title: '无节拍声干扰，仅按设定速度视觉扫拍' },
+    ];
+  }
+  return [
+    { key: 'both', label: '节拍+原声', icon: '🎼', title: '边打节拍边播放古筝示范原声' },
+    { key: 'guzheng', label: '聆听原声', icon: '🪕', title: '关闭打拍声，仅聆听纯净古筝原声示范' },
+    { key: 'metronome', label: '仅节拍器', icon: '⏱️', title: '清脆滴滴节拍器，无原声干扰' },
+  ];
+});
+
 const startingPosture = computed(() =>
   extractStartingPosture(store.currentSheet, store.selectedPartId, store.loopRange)
 );
+
+let progressRafId: number | null = null;
+let lastLoopMeasureIdx = -1;
+
+function stopProgressLoop() {
+  if (progressRafId !== null && typeof cancelAnimationFrame !== 'undefined') {
+    cancelAnimationFrame(progressRafId);
+    progressRafId = null;
+  }
+  lastLoopMeasureIdx = -1;
+}
+
+function startProgressLoop() {
+  stopProgressLoop();
+  if (typeof requestAnimationFrame === 'undefined') return;
+
+  const tick = () => {
+    if (!store.isPlaying) {
+      stopProgressLoop();
+      return;
+    }
+
+    const state = metronome.getPlaybackMeasureState();
+    if (state) {
+      if (store.isPreBeat) {
+        store.isPreBeat = false;
+      }
+      store.setMeasureProgress(state.progress);
+      if (state.measureIndex !== lastLoopMeasureIdx) {
+        lastLoopMeasureIdx = state.measureIndex;
+        store.currentMeasureIndex = state.measureIndex;
+        if (isOriginalScore.value) {
+          autoScroller.scrollToMeasure(state.measureIndex);
+        }
+      }
+    }
+
+    progressRafId = requestAnimationFrame(tick);
+  };
+
+  progressRafId = requestAnimationFrame(tick);
+}
 
 watch(
   () => store.soundMode,
@@ -246,6 +304,7 @@ watch(
 watch(
   () => store.currentSheet,
   () => {
+    stopProgressLoop();
     metronome.stop();
   }
 );
@@ -256,6 +315,10 @@ watch(
     metronome.updateBpm(newBpm, newUnit);
   }
 );
+
+onUnmounted(() => {
+  stopProgressLoop();
+});
 
 function selectBeatUnit(unit: BeatUnit) {
   store.setBeatUnit(unit);
@@ -281,6 +344,7 @@ function startPlayback(withPreBeat: boolean) {
     if (store.loopRange) {
       startPlayback(false);
     } else {
+      stopProgressLoop();
       store.markCurrentScoreMastered();
       store.setPlaying(false);
     }
@@ -288,10 +352,12 @@ function startPlayback(withPreBeat: boolean) {
 
   store.setPlaying(true);
   metronome.start(store.bpm, store.beatUnit, withPreBeat, store.soundMode);
+  startProgressLoop();
 }
 
 function togglePlay() {
   if (store.isPlaying) {
+    stopProgressLoop();
     metronome.stop();
     store.setPlaying(false);
   } else {

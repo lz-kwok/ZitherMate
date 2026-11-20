@@ -40,6 +40,27 @@ export class AutoScroller {
     }
   }
 
+  // 原件画框谱自动滚动：当当前高亮小节超出舒适视线区（过高或偏低）时平滑滚入视野
+  public scrollToMeasure(measureIndex: number) {
+    const el = document.getElementById(`original-measure-${measureIndex}`);
+    if (!el) return;
+
+    const rect = el.getBoundingClientRect();
+    const windowHeight = window.innerHeight;
+
+    const tooLow = rect.top > windowHeight * 0.58;
+    const tooHigh = rect.top < 72;
+
+    if (tooLow || tooHigh) {
+      const targetScreenY = windowHeight * 0.25;
+      const scrollOffset = rect.top - targetScreenY;
+      window.scrollBy({
+        top: scrollOffset,
+        behavior: 'smooth',
+      });
+    }
+  }
+
   // 重置滚动位置到顶部
   public resetToTop() {
     this.lastScrolledLineTop = -1;

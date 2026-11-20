@@ -55,15 +55,15 @@
           <span>伴奏</span>
         </button>
 
-        <!-- 3. AI 识谱上传入口 (Secondary Outline #0F172A) -->
+        <!-- 3. 原件埋点工作台入口 (Secondary Outline #0F172A) -->
         <button
           type="button"
-          @click="showScannerModal = true"
+          @click="openNewOriginalScanner"
           class="vh-btn vh-btn-md vh-btn-secondary text-xs md:text-sm font-semibold"
           style="border: 1px solid #0f172a; color: #0f172a; border-radius: 8px;"
         >
           <span>📷</span>
-          <span>拍摄/导入曲谱</span>
+          <span>原件埋点导入</span>
         </button>
 
         <!-- 4. 伴练状态指示胶囊 (full 9999px 圆角) -->
@@ -93,12 +93,23 @@
       </div>
     </header>
 
-    <!-- 谱面与右侧 21 弦拟真古筝双栏工作区 -->
+    <!-- 谱面与右侧 21 弦拟真古筝双栏工作区（原件画框模式下独享 100% 宽度） -->
     <section class="max-w-7xl mx-auto px-3 sm:px-6 py-6 flex flex-col lg:flex-row items-start gap-6 pb-28">
       <div class="flex-1 min-w-0 w-full">
-        <ScoreRenderer />
+        <OriginalScoreRenderer
+          v-if="isOriginalScore"
+          @edit-anchors="openEditOriginalAnchors"
+          @transcribe-to-digital="showTranscribeModal = true"
+        />
+        <ScoreRenderer
+          v-else
+          @transcribe-to-digital="showTranscribeModal = true"
+        />
       </div>
-      <div class="w-full lg:w-[290px] xl:w-[310px] lg:sticky lg:top-[4.75rem] shrink-0">
+      <div
+        v-if="!isOriginalScore"
+        class="w-full lg:w-[290px] xl:w-[310px] lg:sticky lg:top-[4.75rem] shrink-0"
+      >
         <GuzhengStringPanel />
       </div>
     </section>
@@ -125,19 +136,30 @@
       @close="showAccompanimentModal = false"
     />
 
-    <!-- 拍照与 PDF 识谱弹窗 -->
+    <!-- 原件曲谱埋点与拍照/PDF工作台弹窗 -->
     <CameraCapture
       v-if="showScannerModal"
-      @close="showScannerModal = false"
+      :editing-sheet="editingOriginalSheet"
+      @close="closeScannerModal"
+    />
+
+    <!-- 原件转义为 21 弦数字简谱弹窗 -->
+    <OriginalToDigitalModal
+      v-if="showTranscribeModal"
+      :sheet="store.currentSheet"
+      @close="showTranscribeModal = false"
     />
   </main>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
+import { SheetMusic } from './types/music';
 import { useSheetStore } from './stores/sheetStore';
 import { useAccompanimentStore } from './stores/accompanimentStore';
 import ScoreRenderer from './components/sheet/ScoreRenderer.vue';
+import OriginalScoreRenderer from './components/sheet/OriginalScoreRenderer.vue';
+import OriginalToDigitalModal from './components/sheet/OriginalToDigitalModal.vue';
 import GuzhengStringPanel from './components/sheet/GuzhengStringPanel.vue';
 import MetronomeBar from './components/player/MetronomeBar.vue';
 import AccompanimentBar from './components/accompaniment/AccompanimentBar.vue';
@@ -149,6 +171,25 @@ import ScoreLibraryModal from './components/library/ScoreLibraryModal.vue';
 const store = useSheetStore();
 const accompanimentStore = useAccompanimentStore();
 const showScannerModal = ref(false);
+const showTranscribeModal = ref(false);
 const showLibraryModal = ref(false);
 const showAccompanimentModal = ref(false);
+const editingOriginalSheet = ref<SheetMusic | null>(null);
+
+const isOriginalScore = computed(() => store.currentSheet.scoreMode === 'original');
+
+function openNewOriginalScanner() {
+  editingOriginalSheet.value = null;
+  showScannerModal.value = true;
+}
+
+function openEditOriginalAnchors() {
+  editingOriginalSheet.value = store.currentSheet;
+  showScannerModal.value = true;
+}
+
+function closeScannerModal() {
+  showScannerModal.value = false;
+  editingOriginalSheet.value = null;
+}
 </script>

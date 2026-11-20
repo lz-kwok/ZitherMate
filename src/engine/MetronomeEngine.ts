@@ -10,6 +10,38 @@ export interface NoteScheduleEvent {
   isMainPart?: boolean;
 }
 
+export interface PlaybackMeasureState {
+  measureIndex: number;
+  progress: number;
+  beatInMeasure: number;
+}
+
+export function computeMeasureStateFromBeat(
+  elapsedBeats: number,
+  startMeasureIndex: number,
+  measureBeatsList: number[],
+  measureStartBeats: number[]
+): PlaybackMeasureState | null {
+  if (measureBeatsList.length === 0 || elapsedBeats < 0) {
+    return null;
+  }
+  const lastIdx = measureBeatsList.length - 1;
+  for (let k = 0; k < measureBeatsList.length; k++) {
+    const start = measureStartBeats[k];
+    const mBeats = Math.max(0.25, measureBeatsList[k] || 2);
+    if (elapsedBeats < start + mBeats || k === lastIdx) {
+      const rawBeat = elapsedBeats - start;
+      const clampedBeat = Math.max(0, Math.min(mBeats, rawBeat));
+      return {
+        measureIndex: startMeasureIndex + k,
+        progress: Math.max(0, Math.min(1, clampedBeat / mBeats)),
+        beatInMeasure: clampedBeat,
+      };
+    }
+  }
+  return null;
+}
+
 export class MetronomeEngine {
   private audioCtx: AudioContext | null = null;
   private isRunning: boolean = false;
@@ -29,6 +61,10 @@ export class MetronomeEngine {
 
   private beatsPerMeasure: number = 2; // e.g. 2/4 拍为 2 拍，4/4 拍为 4 拍
   private totalPreBeats: number = 2;
+  private startMeasureIndex: number = 0;
+  private measureBeatsList: number[] = [];
+  private measureStartBeats: number[] = [];
+  private totalTimelineBeats: number = 0;
 
   // 1. 节拍器打拍时钟
   private playbackStartTime: number = 0; // 正拍开始的绝对时间戳
@@ -201,8 +237,37 @@ export class MetronomeEngine {
     this.keySignature = sheet.key || '1=D';
     this.totalPreBeats = this.beatsPerMeasure;
 
+    const isOriginal =
+      sheet.scoreMode === 'original' && Boolean(sheet.originalScore?.anchors?.length);
+    const scoreMeasureCount = isOriginal
+      ? sheet.originalScore!.anchors.length
+      : sheet.measures.length;
+
     const startM = loopRange ? Math.max(1, loopRange.start) : 1;
-    const endM = loopRange ? Math.min(sheet.measures.length, loopRange.end) : sheet.measures.length;
+    const endM = loopRange ? Math.min(scoreMeasureCount, loopRange.end) : scoreMeasureCount;
+
+    // 构建连续小节时间轴映射（支持原件全本小节数、混合拍号与空音符小节）
+    this.startMeasureIndex = startM - 1;
+    this.measureBeatsList = [];
+    this.measureStartBeats = [];
+    let timelineCursor = 0;
+    for (let mIdx = startM - 1; mIdx < endM; mIdx++) {
+      const mBeats =
+        (isOriginal ? sheet.originalScore?.anchors[mIdx]?.beats : undefined) ||
+        sheet.measures[mIdx]?.timeSignature?.[0] ||
+        this.beatsPerMeasure;
+      this.measureStartBeats.push(timelineCursor);
+      this.measureBeatsList.push(mBeats);
+      timelineCursor += mBeats;
+    }
+    this.totalTimelineBeats = timelineCursor;
+
+    // 原件画框模式下不触发内置数字化音符音频调度，保留纯节拍器/静音扫拍
+    if (isOriginal) {
+      const beatMultiplier = this.beatUnit === 'eighth' ? 2 : 1;
+      this.totalTicks = Math.max(0, Math.round(this.totalTimelineBeats * beatMultiplier));
+      return;
+    }
 
     // 确定参与播放的声部列表
     const partsToPlay: { id: string; name: string; isMain?: boolean; measures: typeof sheet.measures }[] = [];
@@ -285,10 +350,29 @@ export class MetronomeEngine {
       return (b.isMainPart ? 1 : 0) - (a.isMainPart ? 1 : 0);
     });
 
-    // 计算总打拍数 (按当前拍位细分)
-    const totalMeasures = endM - startM + 1;
-    const ticksPerMeasure = this.getTicksPerMeasure();
-    this.totalTicks = totalMeasures * ticksPerMeasure;
+    // 计算总打拍数 (按当前拍位细分，兼容局部拍号)
+    const beatMultiplier = this.beatUnit === 'eighth' ? 2 : 1;
+    this.totalTicks = Math.max(0, Math.round(this.totalTimelineBeats * beatMultiplier));
+  }
+
+  /**
+   * 基于 AudioContext 实时钟获取当前小节索引及小节内归一化播放进度（0~1）
+   */
+  public getPlaybackMeasureState(): PlaybackMeasureState | null {
+    if (!this.isRunning || !this.audioCtx || this.measureBeatsList.length === 0) {
+      return null;
+    }
+    const now = this.audioCtx.currentTime;
+    if (now < this.playbackStartTime) {
+      return null;
+    }
+    const elapsedBeats = (now - this.playbackStartTime) / this.getSecondsPerQuarter();
+    return computeMeasureStateFromBeat(
+      elapsedBeats,
+      this.startMeasureIndex,
+      this.measureBeatsList,
+      this.measureStartBeats
+    );
   }
 
   private getTicksPerMeasure(): number {
@@ -506,7 +590,10 @@ export class MetronomeEngine {
     const newTicksPerMeasure = this.getTicksPerMeasure();
     const newTickSizeQuarters = this.beatUnit === 'eighth' ? 0.5 : 1.0;
 
-    this.totalTicks = Math.round(totalMeasures * newTicksPerMeasure);
+    this.totalTicks =
+      this.totalTimelineBeats > 0
+        ? Math.max(0, Math.round(this.totalTimelineBeats * (this.beatUnit === 'eighth' ? 2 : 1)))
+        : Math.round(totalMeasures * newTicksPerMeasure);
     this.playbackStartTime = now - elapsedQuarterBeats * newSecPerQuarter;
     this.currentTickIndex = Math.max(0, Math.ceil((nextTickQuarterPos - 1e-6) / newTickSizeQuarters));
     this.nextTickTime = this.playbackStartTime + this.currentTickIndex * newSecPerTick;

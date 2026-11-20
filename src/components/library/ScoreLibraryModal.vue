@@ -101,6 +101,14 @@
               </h3>
               
               <span
+                v-if="score.scoreMode === 'original'"
+                class="vh-chip"
+                style="background-color: rgba(5, 150, 105, 0.12); color: #059669;"
+              >
+                📄 原件画框谱
+              </span>
+
+              <span
                 v-if="isCustomScore(score.id)"
                 class="vh-chip vh-chip-info"
               >
@@ -187,6 +195,7 @@ import { ref, computed } from 'vue';
 import { SheetMusic } from '../../types/music';
 import { useSheetStore } from '../../stores/sheetStore';
 import { builtInScores } from '../../data/scores';
+import { exportOriginalPagesDataUrls, savePageImages } from '../../utils/scoreImageStorage';
 
 const emit = defineEmits<{
   (e: 'close'): void;
@@ -248,17 +257,33 @@ function handleFileUpload(event: Event) {
   if (!file) return;
 
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = async (e) => {
     try {
       const content = e.target?.result as string;
-      const parsed = JSON.parse(content) as SheetMusic;
+      const parsed = JSON.parse(content) as SheetMusic & {
+        _embeddedPageImages?: Record<string, string>;
+      };
       if (!parsed.title || !parsed.measures) {
         alert('文件格式不正确，缺少 title 或 measures 数据！');
         return;
       }
+
+      const embeddedImages = parsed._embeddedPageImages;
+      delete parsed._embeddedPageImages;
+
       if (!parsed.id || builtInIdSet.has(parsed.id)) {
-        parsed.id = `custom-${Date.now()}`;
+        parsed.id = `${parsed.scoreMode === 'original' ? 'orig' : 'custom'}-${Date.now()}`;
       }
+
+      if (parsed.scoreMode === 'original' && parsed.originalScore && embeddedImages) {
+        const pageEntries = parsed.originalScore.pages
+          .map((p) => ({ id: p.id, dataUrl: embeddedImages[p.id] || '' }))
+          .filter((item) => Boolean(item.dataUrl));
+        if (pageEntries.length > 0) {
+          await savePageImages(parsed.id, pageEntries);
+        }
+      }
+
       store.saveScoreToLibrary(parsed);
       alert(`成功导入并保存曲谱至曲库：《${parsed.title}》！`);
       emit('close');
@@ -270,9 +295,19 @@ function handleFileUpload(event: Event) {
   target.value = '';
 }
 
-function exportCurrentScore() {
+async function exportCurrentScore() {
   const current = store.currentSheet;
-  const jsonStr = JSON.stringify(current, null, 2);
+  let exportPayload: Record<string, unknown> = { ...current };
+
+  if (current.scoreMode === 'original' && current.originalScore?.pages?.length) {
+    const dataUrls = await exportOriginalPagesDataUrls(current.originalScore.pages);
+    exportPayload = {
+      ...current,
+      _embeddedPageImages: dataUrls,
+    };
+  }
+
+  const jsonStr = JSON.stringify(exportPayload, null, 2);
   const blob = new Blob([jsonStr], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

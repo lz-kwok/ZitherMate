@@ -214,7 +214,7 @@
             </button>
           </div>
 
-          <!-- 谱面高显联动开关 + 打点校准入口 -->
+          <!-- 谱面高显联动开关 + 同步偏移微调 + 打点校准入口 -->
           <button
             v-if="store.activeSyncMap"
             type="button"
@@ -229,6 +229,43 @@
           >
             {{ store.isSyncHighlightEnabled ? '✨ 谱面高显已联动' : '✨ 开启谱面高显' }}
           </button>
+
+          <!-- 实时同步时间偏移微调（应对蓝牙耳机/系统音频延迟） -->
+          <div
+            v-if="store.activeSyncMap && store.isSyncHighlightEnabled"
+            class="flex items-center p-0.5 rounded-[8px] border border-[#E2E8F0] gap-0.5"
+            style="background-color: #f8fafc;"
+          >
+            <button
+              type="button"
+              @click="store.nudgeSyncOffset(-50)"
+              class="px-1.5 py-0.5 rounded-[4px] text-[11px] font-semibold text-[#475569] hover:text-[#0F172A] hover:bg-white cursor-pointer transition-colors"
+              title="高显偏快时点此延后 50ms"
+            >
+              慢
+            </button>
+            <button
+              type="button"
+              @click="store.setSyncOffsetMs(0)"
+              class="vh-mono px-1.5 py-0.5 rounded-[4px] text-[11px] font-semibold cursor-pointer transition-colors"
+              :style="
+                store.syncOffsetMs !== 0
+                  ? { backgroundColor: '#0F172A', color: '#FFFFFF' }
+                  : { backgroundColor: 'transparent', color: '#64748B' }
+              "
+              title="当前高显时间偏移（点击归零）；蓝牙耳机通常可调至 -100ms ~ -200ms"
+            >
+              {{ syncOffsetLabel }}
+            </button>
+            <button
+              type="button"
+              @click="store.nudgeSyncOffset(50)"
+              class="px-1.5 py-0.5 rounded-[4px] text-[11px] font-semibold text-[#475569] hover:text-[#0F172A] hover:bg-white cursor-pointer transition-colors"
+              title="高显偏慢时点此提前 50ms"
+            >
+              快
+            </button>
+          </div>
 
           <button
             type="button"
@@ -327,21 +364,23 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue';
 import { PLAYBACK_SPEED_OPTIONS, useAccompanimentStore } from '../../stores/accompanimentStore';
-import { useSheetStore } from '../../stores/sheetStore';
 
 defineEmits<{
   (e: 'open-modal'): void;
 }>();
 
 const store = useAccompanimentStore();
-const sheetStore = useSheetStore();
 
 const lastAnchor = computed(() =>
   store.draftAnchors.length > 0 ? store.draftAnchors[store.draftAnchors.length - 1] : null
 );
 
+const syncOffsetLabel = computed(() =>
+  store.syncOffsetMs > 0 ? `+${store.syncOffsetMs}ms` : `${store.syncOffsetMs}ms`
+);
+
 const nextTargetLabel = computed(() => {
-  const total = sheetStore.currentSheet.measures.length;
+  const total = store.totalScoreMeasures;
   return store.nextTargetMeasure > total
     ? '结束位置'
     : `第 ${store.nextTargetMeasure} 小节`;

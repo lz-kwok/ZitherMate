@@ -1,10 +1,65 @@
-import { SheetMusic } from '../../types/music';
+import { Measure, Note, ScorePart, SheetMusic } from '../../types/music';
+import {
+  DetectedSystem,
+  normalizeSystem,
+  splitSystemEqually,
+} from '../../engine/ScoreLayoutDetector';
 
 export interface VisionConfig {
   apiKey: string;
   baseUrl: string;
   model: string;
 }
+
+export const VISION_PROVIDER_PRESETS = [
+  { key: 'deepseek', label: '🤖 DeepSeek', short: 'v4-flash-vision', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-v4-flash-vision-exp' },
+  { key: 'aliyun', label: '🇨🇳 通义千问', short: 'qwen-vl-max', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-vl-max' },
+  { key: 'zhipu', label: '🇨🇳 智谱 AI', short: 'glm-4v-plus', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4v-plus' },
+  { key: 'siliconflow', label: '⚡ 硅基流动', short: 'Qwen2-VL-72B', baseUrl: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen2-VL-72B-Instruct' },
+  { key: 'openai', label: '🌐 OpenAI', short: 'gpt-4o', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o' },
+] as const;
+
+export interface VisionLayoutResult {
+  title?: string;
+  subtitle?: string;
+  author?: string;
+  key?: string;
+  timeSignature?: [number, number];
+  defaultBpm?: number;
+  isDuet?: boolean;
+  systems: DetectedSystem[];
+}
+
+export const GUZHENG_ANCHOR_LAYOUT_PROMPT = `你是一个资深的古筝乐谱排版分析与视觉定位（Grounding）专家。请分析用户提供的古筝曲谱图片，定位图上每一个实际演奏“乐行（System）”及各“小节线（Barline）”的精确位置，并提取基础元信息。
+
+严格输出纯 JSON（不要输出任何额外解释文字），Schema 如下：
+{
+  "title": "曲谱标题",
+  "subtitle": "副标题（可选）",
+  "author": "作曲/改编者（可选）",
+  "key": "1=D",
+  "timeSignature": [4, 4],
+  "defaultBpm": 78,
+  "isDuet": false,
+  "systems": [
+    {
+      "yTop": 185,
+      "yBottom": 265,
+      "xLeft": 72,
+      "xRight": 930,
+      "measureCount": 4,
+      "barlines": [72, 286, 501, 715, 930]
+    }
+  ]
+}
+
+【核心定位规则】：
+1. 坐标系采用 0~1000 归一化整数坐标（左上角为 0,0，右下角为 1000,1000）。
+2. 忽略顶部大标题、作曲者、左下/右下页码及空白边距，只框选真正的演奏乐行。
+3. 每个 system 必须包含该行音符、高低音点、减时线、指法符号与对应歌词的完整垂直高度 [yTop, yBottom]。
+4. 若图片存在大括号“{”或竖线连起来的“双手/重奏上下两行”（例如古筝 I 与古筝 II 合奏、右手与左手大谱表），请将上下两行合并为【同一个 system】（从上行顶端到下行底端）。
+5. barlines 为该乐行内从左到右所有小节分隔竖线（含起首与收尾线）的 X 坐标，数组长度必须等于 measureCount + 1，且严格递增。
+6. 若图中有调号（如 1=D、1=G）、拍号（如 2/4、4/4、3/4）、速度（如 ♩=78），请精确读取填入。`;
 
 export const GUZHENG_OMR_PROMPT = `你是一个资深的古筝演奏家与民乐简谱数字化专家。请仔细阅读用户提供的古筝曲谱图片，将其转换为结构化JSON数据。
 
@@ -146,16 +201,14 @@ export async function testApiConnection(config: VisionConfig): Promise<{ ok: boo
   }
 }
 
-/**
- * 调用大模型视觉识谱接口
- */
-export async function parseSheetWithVision(
+async function requestVisionJson(
+  systemPrompt: string,
+  userPrompt: string,
   imageBase64: string,
   config: VisionConfig
-): Promise<SheetMusic> {
+): Promise<any> {
   const url = normalizeApiUrl(config.baseUrl);
 
-  // 确保 base64 前缀正确
   const formattedImageUrl = imageBase64.startsWith('data:')
     ? imageBase64
     : `data:image/jpeg;base64,${imageBase64}`;
@@ -165,14 +218,14 @@ export async function parseSheetWithVision(
     messages: [
       {
         role: 'system',
-        content: GUZHENG_OMR_PROMPT,
+        content: systemPrompt,
       },
       {
         role: 'user',
         content: [
           {
             type: 'text',
-            text: '请将这张古筝简谱精确识别为标准的乐谱结构 JSON。',
+            text: userPrompt,
           },
           {
             type: 'image_url',
@@ -187,7 +240,7 @@ export async function parseSheetWithVision(
   };
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 秒识图等待
+  const timeoutId = setTimeout(() => controller.abort(), 90000);
 
   let response: Response;
   try {
@@ -228,7 +281,22 @@ export async function parseSheetWithVision(
     throw new Error('未获取到模型识别结果，返回数据为空');
   }
 
-  const parsedData = extractJsonFromText(rawContent) as SheetMusic;
+  return extractJsonFromText(rawContent);
+}
+
+/**
+ * 调用大模型视觉识谱接口（数字化全谱转换备用通道）
+ */
+export async function parseSheetWithVision(
+  imageBase64: string,
+  config: VisionConfig
+): Promise<SheetMusic> {
+  const parsedData = (await requestVisionJson(
+    GUZHENG_OMR_PROMPT,
+    '请将这张古筝简谱精确识别为标准的乐谱结构 JSON。',
+    imageBase64,
+    config
+  )) as SheetMusic;
 
   // 保证每个小节与音符具备唯一 ID 和完整字段
   parsedData.measures.forEach((m, mIdx) => {
@@ -241,4 +309,230 @@ export async function parseSheetWithVision(
   });
 
   return parsedData;
+}
+
+/**
+ * 调用视觉大模型对原件曲谱进行乐行与小节线视觉定位（Grounding）并读取元信息
+ */
+export async function detectAnchorLayoutWithVision(
+  imageBase64: string,
+  config: VisionConfig
+): Promise<VisionLayoutResult> {
+  const parsed = await requestVisionJson(
+    GUZHENG_ANCHOR_LAYOUT_PROMPT,
+    '请定位这张古筝曲谱中所有演奏乐行与小节线的归一化坐标，并提取调号、拍号、速度等元数据。',
+    imageBase64,
+    config
+  );
+
+  const rawSystems = Array.isArray(parsed?.systems) ? parsed.systems : [];
+  let usesThousandScale = false;
+  for (const s of rawSystems) {
+    const nums = [
+      Number(s?.yTop),
+      Number(s?.yBottom),
+      Number(s?.xLeft),
+      Number(s?.xRight),
+      ...(Array.isArray(s?.barlines) ? s.barlines.map((b: unknown) => Number(b)) : []),
+    ];
+    if (nums.some((n) => Number.isFinite(n) && n > 1.5)) {
+      usesThousandScale = true;
+      break;
+    }
+  }
+  const scale = usesThousandScale ? 1000 : 1;
+
+  const normalizedSystems: DetectedSystem[] = [];
+  for (let i = 0; i < rawSystems.length; i++) {
+    const s = rawSystems[i];
+    const yTop = Number(s?.yTop) / scale;
+    const yBottom = Number(s?.yBottom) / scale;
+    const xLeft = Number(s?.xLeft) / scale;
+    const xRight = Number(s?.xRight) / scale;
+    if (![yTop, yBottom, xLeft, xRight].every((n) => Number.isFinite(n))) {
+      continue;
+    }
+
+    const rawBars = Array.isArray(s?.barlines)
+      ? s.barlines
+          .map((b: unknown) => Number(b) / scale)
+          .filter((b: number) => Number.isFinite(b))
+      : [];
+
+    const mCount = Math.round(Number(s?.measureCount) || 0);
+    const baseSys: DetectedSystem = {
+      id: `ai-sys-${Date.now().toString(36)}-${i + 1}`,
+      yTop,
+      yBottom,
+      xLeft,
+      xRight,
+      barlines: rawBars.length >= 2 ? rawBars : [xLeft, xRight],
+      confidence: 'ai',
+    };
+
+    let finalSys = normalizeSystem(baseSys);
+    const actualMeasures = finalSys.barlines.length - 1;
+    if (mCount >= 1 && (rawBars.length < 2 || actualMeasures < 1)) {
+      finalSys = {
+        ...splitSystemEqually(finalSys, mCount),
+        confidence: 'ai',
+      };
+    } else {
+      finalSys.confidence = 'ai';
+    }
+
+    normalizedSystems.push(finalSys);
+  }
+
+  let parsedTimeSig: [number, number] | undefined;
+  if (Array.isArray(parsed?.timeSignature) && parsed.timeSignature.length === 2) {
+    const top = Math.round(Number(parsed.timeSignature[0]) || 0);
+    const bot = Math.round(Number(parsed.timeSignature[1]) || 0);
+    if (top >= 1 && bot >= 1) {
+      parsedTimeSig = [top, bot];
+    }
+  }
+
+  const parsedBpm = Number(parsed?.defaultBpm);
+
+  return {
+    title: typeof parsed?.title === 'string' && parsed.title.trim() ? parsed.title.trim() : undefined,
+    subtitle: typeof parsed?.subtitle === 'string' && parsed.subtitle.trim() ? parsed.subtitle.trim() : undefined,
+    author: typeof parsed?.author === 'string' && parsed.author.trim() ? parsed.author.trim() : undefined,
+    key: typeof parsed?.key === 'string' && parsed.key.trim() ? parsed.key.trim() : undefined,
+    timeSignature: parsedTimeSig,
+    defaultBpm: Number.isFinite(parsedBpm) && parsedBpm >= 30 && parsedBpm <= 240 ? Math.round(parsedBpm) : undefined,
+    isDuet: typeof parsed?.isDuet === 'boolean' ? parsed.isDuet : undefined,
+    systems: normalizedSystems,
+  };
+}
+
+function sanitizeMeasureSequence(
+  rawMeasures: Measure[],
+  idPrefix: string,
+  targetCount: number,
+  beatsPerMeasure: number
+): Measure[] {
+  const result: Measure[] = [];
+
+  for (let i = 0; i < rawMeasures.length; i++) {
+    const rawM = rawMeasures[i];
+    const measureNum = i + 1;
+    const rawNotes = Array.isArray(rawM?.notes) ? rawM.notes : [];
+
+    const cleanNotes: Note[] = rawNotes.map((n, nIdx) => {
+      const pitchInt = Math.round(Number(n?.pitch) || 0);
+      const safePitch = pitchInt >= 1 && pitchInt <= 7 ? pitchInt : 0;
+      const safeOct = Math.max(-2, Math.min(2, Math.round(Number(n?.octave) || 0)));
+      const rawDur = Number(n?.duration);
+      const safeDur = Number.isFinite(rawDur) && rawDur > 0 ? Math.round(rawDur * 100) / 100 : 1;
+
+      const cleanChord =
+        Array.isArray(n?.chord) && n.chord.length > 0
+          ? n.chord
+              .map((c) => {
+                const cp = Math.round(Number(c?.pitch) || 0);
+                return {
+                  pitch: cp >= 1 && cp <= 7 ? cp : 0,
+                  octave: Math.max(-2, Math.min(2, Math.round(Number(c?.octave) || 0))),
+                };
+              })
+              .filter((c) => c.pitch >= 1 && c.pitch <= 7)
+          : undefined;
+
+      return {
+        ...n,
+        id: `${idPrefix}_m${measureNum}_n${nIdx + 1}`,
+        pitch: safePitch,
+        octave: safeOct,
+        duration: safeDur,
+        chord: cleanChord && cleanChord.length > 0 ? cleanChord : undefined,
+      };
+    });
+
+    if (cleanNotes.length === 0) {
+      cleanNotes.push({
+        id: `${idPrefix}_m${measureNum}_n1`,
+        pitch: 0,
+        octave: 0,
+        duration: beatsPerMeasure,
+      });
+    }
+
+    result.push({
+      measureNumber: measureNum,
+      showBoxNumber: rawM?.showBoxNumber ?? (measureNum === 1 || measureNum % 5 === 0),
+      timeSignature: rawM?.timeSignature,
+      notes: cleanNotes,
+    });
+  }
+
+  while (targetCount > 0 && result.length < targetCount) {
+    const nextNum = result.length + 1;
+    result.push({
+      measureNumber: nextNum,
+      showBoxNumber: nextNum === 1 || nextNum % 5 === 0,
+      notes: [
+        {
+          id: `${idPrefix}_m${nextNum}_n1`,
+          pitch: 0,
+          octave: 0,
+          duration: beatsPerMeasure,
+        },
+      ],
+    });
+  }
+
+  return result;
+}
+
+/**
+ * 将视觉大模型按页转义的简谱 JSON 清洗合并，并与原件埋点小节数量对齐
+ */
+export function normalizeTranscribedMeasures(
+  pageResults: SheetMusic[],
+  targetMeasureCount: number,
+  fallbackTimeSignature: [number, number]
+): { measures: Measure[]; parts?: ScorePart[] } {
+  const safeFallbackBeats = Math.max(1, fallbackTimeSignature?.[0] || 4);
+  const rawMain = pageResults.flatMap((r) => (Array.isArray(r?.measures) ? r.measures : []));
+
+  const partBuckets = new Map<string, { name: string; isMain?: boolean; measures: Measure[] }>();
+  for (const res of pageResults) {
+    if (!Array.isArray(res?.parts)) continue;
+    for (const p of res.parts) {
+      if (!p?.id) continue;
+      let entry = partBuckets.get(p.id);
+      if (!entry) {
+        entry = { name: p.name || p.id, isMain: p.isMain, measures: [] };
+        partBuckets.set(p.id, entry);
+      }
+      if (Array.isArray(p.measures)) {
+        entry.measures.push(...p.measures);
+      }
+    }
+  }
+
+  let normalizedParts: ScorePart[] | undefined;
+  if (partBuckets.size > 0) {
+    const finalTargetCount = Math.max(targetMeasureCount, rawMain.length);
+    normalizedParts = Array.from(partBuckets.entries()).map(([partId, bucket]) => ({
+      id: partId,
+      name: bucket.name,
+      isMain: bucket.isMain,
+      measures: sanitizeMeasureSequence(bucket.measures, `tr_${partId}`, finalTargetCount, safeFallbackBeats),
+    }));
+  }
+
+  const finalMeasures =
+    rawMain.length > 0
+      ? sanitizeMeasureSequence(rawMain, 'tr', targetMeasureCount, safeFallbackBeats)
+      : normalizedParts?.[0]?.measures
+      ? sanitizeMeasureSequence(normalizedParts[0].measures, 'tr', targetMeasureCount, safeFallbackBeats)
+      : sanitizeMeasureSequence([], 'tr', targetMeasureCount, safeFallbackBeats);
+
+  return {
+    measures: finalMeasures,
+    parts: normalizedParts,
+  };
 }

@@ -12,12 +12,16 @@ import {
   AccompanimentSyncMap,
   BUILT_IN_SYNC_MAPS,
   SyncAnchor,
+  applySyncOffset,
+  clampSyncOffsetMs,
   deleteCustomSyncMap,
   loadCustomSyncMaps,
+  loadSyncOffsetMs,
   makeSyncMapKey,
   normalizeSyncAnchors,
   resolveSyncedFrame,
   saveCustomSyncMap,
+  saveSyncOffsetMs,
 } from '../engine/AccompanimentSyncEngine';
 import { autoScroller } from '../engine/AutoScroller';
 
@@ -50,6 +54,7 @@ export const useAccompanimentStore = defineStore('accompaniment', () => {
 
   // 曲谱高显实时同步与敲拍对齐校准状态
   const isSyncHighlightEnabled = ref(true);
+  const syncOffsetMs = ref<number>(loadSyncOffsetMs());
   const customSyncMaps = ref<Record<string, AccompanimentSyncMap>>(loadCustomSyncMaps());
 
   const activeSyncMap = computed<AccompanimentSyncMap | null>(() => {
@@ -76,8 +81,16 @@ export const useAccompanimentStore = defineStore('accompaniment', () => {
   const calibrationStep = ref<1 | 4>(4);
   const draftAnchors = ref<SyncAnchor[]>([]);
 
+  const totalScoreMeasures = computed<number>(() => {
+    const s = sheetStore.currentSheet;
+    if (s.scoreMode === 'original' && s.originalScore?.anchors?.length) {
+      return s.originalScore.anchors.length;
+    }
+    return s.measures.length;
+  });
+
   const nextTargetMeasure = computed<number>(() => {
-    const total = sheetStore.currentSheet.measures.length;
+    const total = totalScoreMeasures.value;
     if (draftAnchors.value.length === 0) return 1;
     const lastM = draftAnchors.value[draftAnchors.value.length - 1].measure;
     if (lastM > total) return total + 1;
@@ -86,7 +99,7 @@ export const useAccompanimentStore = defineStore('accompaniment', () => {
   });
 
   const isCalibrationComplete = computed<boolean>(() => {
-    const total = sheetStore.currentSheet.measures.length;
+    const total = totalScoreMeasures.value;
     if (draftAnchors.value.length === 0) return false;
     return draftAnchors.value[draftAnchors.value.length - 1].measure > total;
   });
@@ -95,6 +108,7 @@ export const useAccompanimentStore = defineStore('accompaniment', () => {
   let loadSequence = 0;
   let rafId: number | null = null;
   let lastFrameFingerprint = '';
+  let lastMeasureIndex = -1;
 
   let audioEl: HTMLAudioElement | null = null;
 
@@ -116,15 +130,18 @@ export const useAccompanimentStore = defineStore('accompaniment', () => {
         sheetStore.setAccompanimentSyncing(false);
       }
       lastFrameFingerprint = '';
+      lastMeasureIndex = -1;
       return;
     }
 
-    const t = audioEl ? audioEl.currentTime : currentTime.value;
+    const rawT = audioEl ? audioEl.currentTime : currentTime.value;
+    const t = applySyncOffset(rawT, syncOffsetMs.value);
     const frame = resolveSyncedFrame(
       t,
       sheetStore.currentSheet,
       activeSyncMap.value.anchors,
-      sheetStore.selectedPartId
+      sheetStore.selectedPartId,
+      activeSyncMap.value.repeatRemap
     );
 
     if (!frame) {
@@ -132,6 +149,7 @@ export const useAccompanimentStore = defineStore('accompaniment', () => {
         sheetStore.setAccompanimentSyncing(false);
       }
       lastFrameFingerprint = '';
+      lastMeasureIndex = -1;
       return;
     }
 
@@ -144,12 +162,28 @@ export const useAccompanimentStore = defineStore('accompaniment', () => {
       sheetStore.setAccompanimentSyncing(true);
     }
 
+    // 实时推动 60fps 小节内扫拍光柱进度
+    sheetStore.setMeasureProgress(frame.measureProgress);
+
+    const measureChanged = frame.measureIndex !== lastMeasureIndex;
+    if (measureChanged) {
+      lastMeasureIndex = frame.measureIndex;
+    }
+
     if (fp !== lastFrameFingerprint) {
       lastFrameFingerprint = fp;
       sheetStore.setSyncedFrame(frame.primaryNoteId, frame.measureIndex, frame.partNotes);
-      if (scrollIntoView && frame.primaryNoteId) {
-        autoScroller.scrollToActiveNote(frame.primaryNoteId);
+      if (scrollIntoView) {
+        if (sheetStore.currentSheet.scoreMode === 'original') {
+          if (measureChanged) {
+            autoScroller.scrollToMeasure(frame.measureIndex);
+          }
+        } else if (frame.primaryNoteId) {
+          autoScroller.scrollToActiveNote(frame.primaryNoteId);
+        }
       }
+    } else if (scrollIntoView && sheetStore.currentSheet.scoreMode === 'original' && measureChanged) {
+      autoScroller.scrollToMeasure(frame.measureIndex);
     }
   }
 
@@ -160,6 +194,7 @@ export const useAccompanimentStore = defineStore('accompaniment', () => {
     }
     if (clearHighlight) {
       lastFrameFingerprint = '';
+      lastMeasureIndex = -1;
       sheetStore.setAccompanimentSyncing(false);
     }
   }
@@ -438,6 +473,17 @@ export const useAccompanimentStore = defineStore('accompaniment', () => {
     }
   }
 
+  function setSyncOffsetMs(ms: number) {
+    syncOffsetMs.value = saveSyncOffsetMs(clampSyncOffsetMs(ms));
+    if (isPlaying.value) {
+      syncOnceAtCurrentTime(false);
+    }
+  }
+
+  function nudgeSyncOffset(deltaMs: number) {
+    setSyncOffsetMs(syncOffsetMs.value + deltaMs);
+  }
+
   function startCalibration() {
     isCalibrating.value = true;
     draftAnchors.value = [];
@@ -454,6 +500,7 @@ export const useAccompanimentStore = defineStore('accompaniment', () => {
 
   function recordCalibrationTap() {
     if (!isCalibrating.value || isCalibrationComplete.value) return;
+    const tappedMeasure = nextTargetMeasure.value;
     const rawT = audioEl ? audioEl.currentTime : currentTime.value;
     const prevT =
       draftAnchors.value.length > 0
@@ -462,8 +509,15 @@ export const useAccompanimentStore = defineStore('accompaniment', () => {
     const timeSec = Math.round(Math.max(prevT + 0.05, rawT) * 100) / 100;
     draftAnchors.value = normalizeSyncAnchors([
       ...draftAnchors.value,
-      { measure: nextTargetMeasure.value, timeSec },
+      { measure: tappedMeasure, timeSec },
     ]);
+    if (sheetStore.currentSheet.scoreMode === 'original' && totalScoreMeasures.value > 0) {
+      sheetStore.currentMeasureIndex = Math.max(
+        0,
+        Math.min(tappedMeasure - 1, totalScoreMeasures.value - 1)
+      );
+      autoScroller.scrollToMeasure(sheetStore.currentMeasureIndex);
+    }
   }
 
   function undoCalibrationTap() {
@@ -556,12 +610,14 @@ export const useAccompanimentStore = defineStore('accompaniment', () => {
     loopA,
     loopB,
     isSyncHighlightEnabled,
+    syncOffsetMs,
     customSyncMaps,
     activeSyncMap,
     hasBuiltInSyncMap,
     isCalibrating,
     calibrationStep,
     draftAnchors,
+    totalScoreMeasures,
     nextTargetMeasure,
     isCalibrationComplete,
     selectTrack,
@@ -576,6 +632,8 @@ export const useAccompanimentStore = defineStore('accompaniment', () => {
     toggleLoopPoint,
     clearLoop,
     toggleSyncHighlight,
+    setSyncOffsetMs,
+    nudgeSyncOffset,
     startCalibration,
     cancelCalibration,
     setCalibrationStep,

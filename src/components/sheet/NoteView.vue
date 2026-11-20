@@ -78,17 +78,26 @@
             :key="pIdx"
             class="flex flex-col items-center my-[1px]"
           >
+            <div v-if="p.octave >= 1" class="flex items-center gap-0.5 mb-[2px]">
+              <span class="w-1.5 h-1.5 rounded-full bg-current" />
+              <span v-if="p.octave >= 2" class="w-1.5 h-1.5 rounded-full bg-current" />
+            </div>
             <span
-              v-if="p.octave >= 1"
-              class="w-1.5 h-1.5 rounded-full bg-current mb-[2px]"
-            />
-            <span class="text-xl md:text-2xl font-bold musical-font tracking-tight leading-none">
+              class="font-bold musical-font tracking-tight leading-none"
+              :class="
+                note.chord.length >= 4
+                  ? 'text-sm md:text-base'
+                  : note.chord.length === 3
+                  ? 'text-base md:text-lg'
+                  : 'text-xl md:text-2xl'
+              "
+            >
               {{ p.pitch }}
             </span>
-            <span
-              v-if="p.octave <= -1"
-              class="w-1.5 h-1.5 rounded-full bg-current mt-[2px]"
-            />
+            <div v-if="p.octave <= -1" class="flex items-center gap-0.5 mt-[2px]">
+              <span class="w-1.5 h-1.5 rounded-full bg-current" />
+              <span v-if="p.octave <= -2" class="w-1.5 h-1.5 rounded-full bg-current" />
+            </div>
           </div>
         </div>
 

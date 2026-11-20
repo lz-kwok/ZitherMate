@@ -5,36 +5,97 @@ export interface SyncAnchor {
   timeSec: number; // 音频绝对时间戳 (秒)
 }
 
+export interface RepeatRemapRule {
+  fromMeasure: number; // 音频时间轴上重复段的起始逻辑小节号（如 105）
+  toMeasure: number; // 音频时间轴上重复段的结束逻辑小节号（如 112）
+  targetStartMeasure: number; // 映射回原曲谱实际小节号起点（如 97）
+}
+
 export interface AccompanimentSyncMap {
   trackId: string;
   scoreId: string;
   anchors: SyncAnchor[];
+  repeatRemap?: RepeatRemapRule[];
   isCustom?: boolean;
 }
 
 export interface SyncedScoreFrame {
   measureIndex: number; // 0-based 小节索引
+  measureProgress: number; // 小节内进度 0~1（用于原件画框扫拍）
   primaryNoteId: string | null;
   primaryNote: Note | null;
   partNotes: Record<string, Note | null>;
 }
 
 const SYNC_STORAGE_KEY = 'guzheng_accompaniment_sync_v1';
+export const SYNC_OFFSET_STORAGE_KEY = 'guzheng_accompaniment_sync_offset_v1';
+export const MIN_SYNC_OFFSET_MS = -600;
+export const MAX_SYNC_OFFSET_MS = 600;
 
-// 基于声学 Chroma + 节拍分析实测的内置伴奏同步轴
+export function clampSyncOffsetMs(offsetMs: number): number {
+  const num = Number(offsetMs);
+  if (!Number.isFinite(num)) return 0;
+  return Math.max(MIN_SYNC_OFFSET_MS, Math.min(MAX_SYNC_OFFSET_MS, Math.round(num)));
+}
+
+/**
+ * 将视觉高显偏移（毫秒）叠加到音频当前播放时间。
+ * 负值表示延后高显（高显偏快时用），正值表示提前高显（高显偏慢时用）。
+ */
+export function applySyncOffset(timeSec: number, offsetMs: number): number {
+  const base = Number.isFinite(timeSec) ? timeSec : 0;
+  return Math.max(0, base + clampSyncOffsetMs(offsetMs) / 1000);
+}
+
+export function loadSyncOffsetMs(): number {
+  try {
+    if (typeof localStorage === 'undefined') return 0;
+    const raw = localStorage.getItem(SYNC_OFFSET_STORAGE_KEY);
+    if (raw === null) return 0;
+    return clampSyncOffsetMs(Number(raw));
+  } catch {
+    return 0;
+  }
+}
+
+export function saveSyncOffsetMs(offsetMs: number): number {
+  const clamped = clampSyncOffsetMs(offsetMs);
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(SYNC_OFFSET_STORAGE_KEY, String(clamped));
+    }
+  } catch {
+    // 忽略存储异常
+  }
+  return clamped;
+}
+
+// 基于全曲声学起音与 Chroma 回归实测的内置伴奏同步轴（M1~M108 恒定 96 BPM / 1.250s/小节，M109~M112 反复后渐慢）
 export const BUILT_IN_SYNC_MAPS: AccompanimentSyncMap[] = [
   {
     trackId: 'builtin-13.唐诗联唱（示范）.mp3',
     scoreId: 'tangshi-lianchang',
     anchors: [
-      { measure: 1, timeSec: 0.82 },
-      { measure: 5, timeSec: 5.75 },
-      { measure: 9, timeSec: 10.68 },
-      { measure: 13, timeSec: 15.60 },
-      { measure: 17, timeSec: 20.52 },
-      { measure: 20, timeSec: 24.45 },
-      { measure: 25, timeSec: 30.45 },
-      { measure: 29, timeSec: 35.40 },
+      { measure: 1, timeSec: 0.86 },
+      { measure: 9, timeSec: 10.86 },
+      { measure: 17, timeSec: 20.86 },
+      { measure: 29, timeSec: 35.86 },
+      { measure: 41, timeSec: 50.86 },
+      { measure: 53, timeSec: 65.86 },
+      { measure: 65, timeSec: 80.86 },
+      { measure: 73, timeSec: 90.86 },
+      { measure: 89, timeSec: 110.86 },
+      { measure: 97, timeSec: 120.86 },
+      { measure: 101, timeSec: 125.86 },
+      { measure: 105, timeSec: 130.86 },
+      { measure: 109, timeSec: 135.86 },
+      { measure: 110, timeSec: 137.50 },
+      { measure: 111, timeSec: 139.20 },
+      { measure: 112, timeSec: 141.30 },
+      { measure: 113, timeSec: 143.55 },
+    ],
+    repeatRemap: [
+      { fromMeasure: 105, toMeasure: 112, targetStartMeasure: 97 },
     ],
   },
 ];
@@ -77,18 +138,29 @@ export function resolveSyncedFrame(
   timeSec: number,
   sheet: SheetMusic,
   anchors: SyncAnchor[],
-  selectedPartId: string = 'all'
+  selectedPartId: string = 'all',
+  repeatRemap?: RepeatRemapRule[]
 ): SyncedScoreFrame | null {
   const sorted = normalizeSyncAnchors(anchors);
-  const totalMeasures = sheet.measures.length;
+  const isOriginalMode =
+    sheet.scoreMode === 'original' && Boolean(sheet.originalScore?.anchors?.length);
+  const totalMeasures = isOriginalMode
+    ? sheet.originalScore!.anchors.length
+    : sheet.measures.length;
   if (sorted.length === 0 || totalMeasures <= 0) return null;
 
   if (timeSec < sorted[0].timeSec) {
     return null;
   }
 
+  const activeRemap = (repeatRemap || []).filter((r) => r.targetStartMeasure <= totalMeasures);
+  const timelineEndMeasure =
+    activeRemap.length > 0
+      ? Math.max(totalMeasures, ...activeRemap.map((r) => r.toMeasure))
+      : totalMeasures;
+
   const last = sorted[sorted.length - 1];
-  if (last.measure > totalMeasures && timeSec >= last.timeSec) {
+  if (last.measure > timelineEndMeasure && timeSec >= last.timeSec) {
     return null;
   }
 
@@ -120,13 +192,35 @@ export function resolveSyncedFrame(
     exactMeasureFloat = last.measure + (timeSec - last.timeSec) / secPerMeasure;
   }
 
-  const measureNumber = Math.floor(exactMeasureFloat);
+  const rawMeasureNumber = Math.floor(exactMeasureFloat);
+  let measureNumber = rawMeasureNumber;
+  if (activeRemap.length > 0) {
+    for (const r of activeRemap) {
+      if (rawMeasureNumber >= r.fromMeasure && rawMeasureNumber <= r.toMeasure) {
+        measureNumber = r.targetStartMeasure + (rawMeasureNumber - r.fromMeasure);
+        break;
+      }
+    }
+  }
+
   if (measureNumber < 1 || measureNumber > totalMeasures) {
     return null;
   }
 
   const measureIdx = measureNumber - 1;
-  const fraction = Math.max(0, exactMeasureFloat - measureNumber);
+  const fraction = Math.max(0, exactMeasureFloat - rawMeasureNumber);
+  const measureProgress = Math.max(0, Math.min(1, fraction));
+
+  if (isOriginalMode) {
+    return {
+      measureIndex: measureIdx,
+      measureProgress,
+      primaryNoteId: null,
+      primaryNote: null,
+      partNotes: {},
+    };
+  }
+
   const beatsPerMeasure =
     sheet.measures[measureIdx]?.timeSignature?.[0] || sheet.timeSignature?.[0] || 2;
   const beatInMeasure = fraction * beatsPerMeasure;
@@ -185,6 +279,7 @@ export function resolveSyncedFrame(
 
   return {
     measureIndex: measureIdx,
+    measureProgress,
     primaryNoteId: primaryNote?.id ?? null,
     primaryNote,
     partNotes,
